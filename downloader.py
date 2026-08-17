@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 
 
 # ============================================================
-# 配置
+# 基本配置
 # ============================================================
 
 BASE_URL = (
@@ -18,34 +18,43 @@ BASE_URL = (
     "{}/cosplay-g44-32p-396mb/"
 )
 
-# GitHub Actions 可以通过环境变量修改
-START_ID = int(os.getenv("START_ID", "1"))
-END_ID = int(os.getenv("END_ID", "20"))
+# ------------------------------------------------------------
+# GitHub Actions 参数
+# ------------------------------------------------------------
 
-# GitHub 项目里的下载目录
-ROOT_DIR = Path(
-    os.getenv("ROOT_DIR", "downloads")
+START_ID = int(
+    os.getenv("START_ID", "1")
 )
 
-# 同一个文件夹里面的图片并发数量
+END_ID = int(
+    os.getenv("END_ID", "20")
+)
+
 IMAGE_CONCURRENCY = int(
     os.getenv("IMAGE_CONCURRENCY", "10")
 )
 
-# 请求重试次数
-RETRIES = int(
-    os.getenv("RETRIES", "5")
+# ------------------------------------------------------------
+# 保存目录
+# ------------------------------------------------------------
+
+ROOT_DIR = Path(
+    os.getenv("ROOT_DIR", "downloads")
 )
 
-# Git Push 重试次数
+# ------------------------------------------------------------
+# 重试
+# ------------------------------------------------------------
+
+DOWNLOAD_RETRIES = 5
+PAGE_RETRIES = 5
 GIT_PUSH_RETRIES = 5
 
-# Git Push 重试等待时间
 GIT_PUSH_WAIT = 20
 
 
 # ============================================================
-# 超时
+# HTTP 超时
 # ============================================================
 
 PAGE_TIMEOUT = aiohttp.ClientTimeout(
@@ -62,24 +71,27 @@ IMAGE_TIMEOUT = aiohttp.ClientTimeout(
 
 
 # ============================================================
-# 记忆文件
+# 文件
 # ============================================================
 
-DOWNLOADED_FILE = ROOT_DIR / "downloaded.txt"
+DOWNLOADED_FILE = (
+    ROOT_DIR / "downloaded.txt"
+)
 
 COMPLETE_FILE = ".complete"
 
 
 # ============================================================
-# Headers
+# HTTP Headers
 # ============================================================
 
 BASE_HEADERS = {
-    "User-Agent": (
+
+    "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/151.0.0.0 Safari/537.36"
-    ),
+        "AppleWebKit/537.36 "
+        "(KHTML, like Gecko) "
+        "Chrome/151.0.0.0 Safari/537.36",
 
     "Accept-Language":
         "zh-CN,zh;q=0.9,en;q=0.8",
@@ -90,7 +102,7 @@ BASE_HEADERS = {
 
 
 # ============================================================
-# Windows / Linux 文件名清理
+# 安全文件名
 # ============================================================
 
 def safe_filename(name):
@@ -103,7 +115,9 @@ def safe_filename(name):
 
     name = name.strip()
 
-    name = name.rstrip(" .")
+    name = name.rstrip(
+        " ."
+    )
 
     return name
 
@@ -112,23 +126,26 @@ def safe_filename(name):
 # 从 data-original 获取文件名
 # ============================================================
 
-def get_filename_from_original(data_original):
+def get_filename_from_original(
+    data_original
+):
 
     if not data_original:
+
         return None
 
-    clean_url = data_original.split(
-        "?",
-        1
-    )[0]
-
-    clean_url = clean_url.rstrip("/")
+    clean_url = (
+        data_original
+        .split("?", 1)[0]
+        .rstrip("/")
+    )
 
     filename = os.path.basename(
         urlparse(clean_url).path
     )
 
     if not filename:
+
         return None
 
     if not re.search(
@@ -136,6 +153,7 @@ def get_filename_from_original(data_original):
         filename,
         re.IGNORECASE
     ):
+
         return None
 
     return filename
@@ -158,7 +176,7 @@ def is_image_url(url):
 
 
 # ============================================================
-# 读取下载记忆
+# 读取 downloaded.txt
 # ============================================================
 
 def load_downloaded():
@@ -166,6 +184,7 @@ def load_downloaded():
     downloaded = set()
 
     if not DOWNLOADED_FILE.exists():
+
         return downloaded
 
     try:
@@ -181,12 +200,14 @@ def load_downloaded():
                 line = line.strip()
 
                 if not line:
+
                     continue
 
-                album_id = line.split(
-                    "|",
-                    1
-                )[0].strip()
+                album_id = (
+                    line
+                    .split("|", 1)[0]
+                    .strip()
+                )
 
                 if album_id.isdigit():
 
@@ -197,7 +218,7 @@ def load_downloaded():
     except Exception as e:
 
         print(
-            f"[警告] 读取记忆失败：{e}",
+            f"[警告] 读取 downloaded.txt 失败：{e}",
             flush=True
         )
 
@@ -205,7 +226,7 @@ def load_downloaded():
 
 
 # ============================================================
-# 写入下载记忆
+# 写入 downloaded.txt
 # ============================================================
 
 def append_downloaded(
@@ -233,37 +254,91 @@ def append_downloaded(
 # Git 命令
 # ============================================================
 
-def run_git_command(
+def run_git(
     args,
     check=True
 ):
 
+    command = [
+        "git"
+    ] + args
+
     print(
-        "[GIT] git " + " ".join(args),
+        "[GIT]",
+        " ".join(command),
         flush=True
     )
 
     result = subprocess.run(
-        ["git"] + args,
+        command,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT
     )
 
     if result.stdout:
+
         print(
             result.stdout,
             flush=True
         )
 
-    if check and result.returncode != 0:
+    if (
+        check
+        and result.returncode != 0
+    ):
 
         raise RuntimeError(
-            f"Git 命令失败，退出码："
-            f"{result.returncode}"
+            "Git 命令失败："
+            + " ".join(command)
         )
 
     return result
+
+
+# ============================================================
+# 获取当前 GitHub 分支
+# ============================================================
+
+def get_git_branch():
+
+    # --------------------------------------------------------
+    # GitHub Actions
+    # --------------------------------------------------------
+
+    branch = os.getenv(
+        "GITHUB_REF_NAME"
+    )
+
+    if branch:
+
+        return branch
+
+    # --------------------------------------------------------
+    # 本地运行
+    # --------------------------------------------------------
+
+    result = subprocess.run(
+        [
+            "git",
+            "branch",
+            "--show-current"
+        ],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT
+    )
+
+    branch = (
+        result.stdout
+        .strip()
+    )
+
+    if branch:
+
+        return branch
+
+    return "main"
 
 
 # ============================================================
@@ -271,6 +346,22 @@ def run_git_command(
 # ============================================================
 
 def git_push_with_retry():
+
+    branch = get_git_branch()
+
+    print()
+    print(
+        "=" * 70
+    )
+
+    print(
+        f"[GIT] 当前分支：{branch}",
+        flush=True
+    )
+
+    print(
+        "=" * 70
+    )
 
     for attempt in range(
         1,
@@ -292,46 +383,205 @@ def git_push_with_retry():
             "=" * 70
         )
 
-        result = subprocess.run(
-            [
-                "git",
-                "push",
-                "origin",
-                "HEAD:${GITHUB_REF_NAME}"
-            ],
-            shell=False,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT
-        )
+        try:
 
-        if result.stdout:
+            # =================================================
+            # 获取远程最新状态
+            # =================================================
+
+            fetch = subprocess.run(
+                [
+                    "git",
+                    "fetch",
+                    "origin",
+                    branch
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT
+            )
+
+            if fetch.stdout:
+
+                print(
+                    fetch.stdout,
+                    flush=True
+                )
+
+            if fetch.returncode != 0:
+
+                raise RuntimeError(
+                    "git fetch 失败"
+                )
+
+            # =================================================
+            # 获取本地 HEAD
+            # =================================================
+
+            local = subprocess.run(
+                [
+                    "git",
+                    "rev-parse",
+                    "HEAD"
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT
+            )
+
+            local_hash = (
+                local.stdout.strip()
+            )
+
+            # =================================================
+            # 获取远程 HEAD
+            # =================================================
+
+            remote = subprocess.run(
+                [
+                    "git",
+                    "rev-parse",
+                    f"origin/{branch}"
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT
+            )
+
+            remote_hash = (
+                remote.stdout.strip()
+            )
 
             print(
-                result.stdout,
+                f"[GIT] 本地：{local_hash}",
                 flush=True
             )
 
-        if result.returncode == 0:
-
             print(
-                "[GIT] ✓ Push 成功",
+                f"[GIT] 远程：{remote_hash}",
                 flush=True
             )
 
-            return True
+            # =================================================
+            # 判断是否需要 rebase
+            # =================================================
 
-        print(
-            f"[GIT] ✗ Push 失败，退出码："
-            f"{result.returncode}",
-            flush=True
-        )
+            if (
+                local_hash
+                != remote_hash
+            ):
+
+                print(
+                    "[GIT] 远程存在新提交",
+                    flush=True
+                )
+
+                print(
+                    "[GIT] 正在执行 rebase...",
+                    flush=True
+                )
+
+                rebase = subprocess.run(
+                    [
+                        "git",
+                        "rebase",
+                        f"origin/{branch}"
+                    ],
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT
+                )
+
+                if rebase.stdout:
+
+                    print(
+                        rebase.stdout,
+                        flush=True
+                    )
+
+                if rebase.returncode != 0:
+
+                    print(
+                        "[GIT] rebase 失败",
+                        flush=True
+                    )
+
+                    subprocess.run(
+                        [
+                            "git",
+                            "rebase",
+                            "--abort"
+                        ],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT
+                    )
+
+                    raise RuntimeError(
+                        "Git rebase 失败"
+                    )
+
+            # =================================================
+            # Push
+            #
+            # 注意：
+            # 这里必须使用 Python 拼接 branch。
+            #
+            # 不能写：
+            #
+            # HEAD:${GITHUB_REF_NAME}
+            #
+            # 因为 subprocess 不会展开变量。
+            # =================================================
+
+            push = subprocess.run(
+                [
+                    "git",
+                    "push",
+                    "origin",
+                    f"HEAD:{branch}"
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT
+            )
+
+            if push.stdout:
+
+                print(
+                    push.stdout,
+                    flush=True
+                )
+
+            if push.returncode == 0:
+
+                print(
+                    "[GIT] ✓ Push 成功",
+                    flush=True
+                )
+
+                return True
+
+            print(
+                f"[GIT] ✗ Push 失败 "
+                f"退出码：{push.returncode}",
+                flush=True
+            )
+
+        except Exception as e:
+
+            print(
+                f"[GIT] Push 错误：{e}",
+                flush=True
+            )
+
+        # =====================================================
+        # Retry
+        # =====================================================
 
         if attempt < GIT_PUSH_RETRIES:
 
             print(
-                f"[GIT] 等待 "
-                f"{GIT_PUSH_WAIT} 秒后重试...",
+                f"[GIT] {GIT_PUSH_WAIT} 秒后重试...",
                 flush=True
             )
 
@@ -339,11 +589,16 @@ def git_push_with_retry():
                 GIT_PUSH_WAIT
             )
 
+    print(
+        "[GIT] ✗ Push 连续失败",
+        flush=True
+    )
+
     return False
 
 
 # ============================================================
-# 每个文件夹完成后提交
+# Commit + Push
 # ============================================================
 
 def commit_and_push_folder(
@@ -358,7 +613,7 @@ def commit_and_push_folder(
 
     print(
         f"[{album_id}/{END_ID}] "
-        f"开始提交 GitHub",
+        f"准备提交 GitHub",
         flush=True
     )
 
@@ -373,16 +628,16 @@ def commit_and_push_folder(
 
     try:
 
-        # ----------------------------------------------------
-        # 加入当前文件夹
-        # ----------------------------------------------------
-
         folder_path = (
             ROOT_DIR /
             folder_name
         )
 
-        run_git_command(
+        # =================================================
+        # Git Add
+        # =================================================
+
+        run_git(
             [
                 "add",
                 "--",
@@ -391,11 +646,11 @@ def commit_and_push_folder(
             ]
         )
 
-        # ----------------------------------------------------
-        # 检查是否有变化
-        # ----------------------------------------------------
+        # =================================================
+        # 检查暂存区
+        # =================================================
 
-        result = run_git_command(
+        result = run_git(
             [
                 "diff",
                 "--cached",
@@ -407,22 +662,22 @@ def commit_and_push_folder(
         if result.returncode == 0:
 
             print(
-                "[GIT] 没有新的变化",
+                "[GIT] 没有新的内容需要提交",
                 flush=True
             )
 
             return True
 
-        # ----------------------------------------------------
+        # =================================================
         # Commit
-        # ----------------------------------------------------
+        # =================================================
 
         commit_message = (
             f"Download album {album_id}: "
             f"{folder_name}"
         )
 
-        run_git_command(
+        run_git(
             [
                 "commit",
                 "-m",
@@ -430,25 +685,17 @@ def commit_and_push_folder(
             ]
         )
 
-        # ----------------------------------------------------
+        # =================================================
         # Push
-        # ----------------------------------------------------
+        # =================================================
 
-        success = git_push_with_retry()
-
-        if not success:
-
-            print(
-                "[GIT] ✗ Push 连续失败",
-                flush=True
-            )
+        if not git_push_with_retry():
 
             return False
 
-        print()
         print(
             f"[{album_id}/{END_ID}] "
-            f"✓ GitHub 提交完成",
+            f"✓ Commit + Push 完成",
             flush=True
         )
 
@@ -457,7 +704,7 @@ def commit_and_push_folder(
     except Exception as e:
 
         print(
-            f"[GIT] ✗ Git 操作失败：{e}",
+            f"[GIT] Commit/Push 失败：{e}",
             flush=True
         )
 
@@ -482,7 +729,9 @@ def parse_page(
     # H1
     # ========================================================
 
-    h1 = soup.find("h1")
+    h1 = soup.find(
+        "h1"
+    )
 
     if not h1:
 
@@ -498,11 +747,13 @@ def parse_page(
     )
 
     # ========================================================
-    # 图片区域
+    # 图片容器
     # ========================================================
 
-    images_container = soup.select_one(
-        ".images"
+    images_container = (
+        soup.select_one(
+            ".images"
+        )
     )
 
     if not images_container:
@@ -512,7 +763,7 @@ def parse_page(
     image_list = []
 
     # ========================================================
-    # A
+    # 找图片
     # ========================================================
 
     for a in images_container.find_all(
@@ -520,54 +771,46 @@ def parse_page(
         href=True
     ):
 
-        href = a["href"].strip()
+        href = (
+            a["href"]
+            .strip()
+        )
 
-        # ----------------------------------------------------
-        # href 必须是图片
-        # ----------------------------------------------------
-
-        if not is_image_url(href):
+        if not is_image_url(
+            href
+        ):
 
             continue
 
-        # ----------------------------------------------------
-        # IMG
-        # ----------------------------------------------------
-
-        img = a.find("img")
+        img = a.find(
+            "img"
+        )
 
         if not img:
 
             continue
 
-        # ----------------------------------------------------
-        # data-original
-        # ----------------------------------------------------
-
-        data_original = img.get(
-            "data-original",
-            ""
-        ).strip()
+        data_original = (
+            img.get(
+                "data-original",
+                ""
+            )
+            .strip()
+        )
 
         if not data_original:
 
             continue
 
-        # ----------------------------------------------------
-        # 文件名
-        # ----------------------------------------------------
-
-        filename = get_filename_from_original(
-            data_original
+        filename = (
+            get_filename_from_original(
+                data_original
+            )
         )
 
         if not filename:
 
             continue
-
-        # ----------------------------------------------------
-        # 原图 URL
-        # ----------------------------------------------------
 
         image_url = urljoin(
             page_url,
@@ -579,22 +822,28 @@ def parse_page(
         # ----------------------------------------------------
 
         if any(
-            x["filename"] == filename
-            for x in image_list
+            item["filename"]
+            == filename
+            for item in image_list
         ):
 
             continue
 
-        image_list.append({
-            "url": image_url,
-            "filename": filename,
-        })
+        image_list.append(
+            {
+                "url": image_url,
+                "filename": filename
+            }
+        )
 
-    return folder_name, image_list
+    return (
+        folder_name,
+        image_list
+    )
 
 
 # ============================================================
-# 获取页面
+# 获取网页
 # ============================================================
 
 async def fetch_page(
@@ -602,19 +851,22 @@ async def fetch_page(
     album_id
 ):
 
-    page_url = BASE_URL.format(
-        album_id
+    page_url = (
+        BASE_URL.format(
+            album_id
+        )
     )
 
+    print()
     print(
-        f"\n[{album_id}/{END_ID}] "
+        f"[{album_id}/{END_ID}] "
         f"正在获取页面...",
         flush=True
     )
 
     for attempt in range(
         1,
-        RETRIES + 1
+        PAGE_RETRIES + 1
     ):
 
         try:
@@ -623,7 +875,7 @@ async def fetch_page(
                 **BASE_HEADERS,
 
                 "Referer":
-                    "https://www.xasiat.com/",
+                    "https://www.xasiat.com/"
             }
 
             async with session.get(
@@ -632,9 +884,9 @@ async def fetch_page(
                 timeout=PAGE_TIMEOUT
             ) as response:
 
-                # =================================================
+                # =============================================
                 # 404
-                # =================================================
+                # =============================================
 
                 if response.status == 404:
 
@@ -650,9 +902,9 @@ async def fetch_page(
                         "images": []
                     }
 
-                # =================================================
-                # 其他错误
-                # =================================================
+                # =============================================
+                # HTTP 错误
+                # =============================================
 
                 if response.status != 200:
 
@@ -664,18 +916,20 @@ async def fetch_page(
                     errors="ignore"
                 )
 
-            # ====================================================
+            # =================================================
             # 解析
-            # ====================================================
+            # =================================================
 
-            folder_name, images = parse_page(
-                html,
-                page_url
+            folder_name, images = (
+                parse_page(
+                    html,
+                    page_url
+                )
             )
 
-            # ====================================================
-            # 没有 H1
-            # ====================================================
+            # =================================================
+            # H1 不存在
+            # =================================================
 
             if not folder_name:
 
@@ -691,17 +945,11 @@ async def fetch_page(
                     "images": []
                 }
 
-            # ====================================================
+            # =================================================
             # 没有图片
-            # ====================================================
+            # =================================================
 
             if not images:
-
-                print(
-                    f"[{album_id}/{END_ID}] "
-                    f"文件夹：{folder_name}",
-                    flush=True
-                )
 
                 print(
                     f"[{album_id}/{END_ID}] "
@@ -715,9 +963,9 @@ async def fetch_page(
                     "images": []
                 }
 
-            # ====================================================
+            # =================================================
             # 成功
-            # ====================================================
+            # =================================================
 
             print(
                 f"[{album_id}/{END_ID}] "
@@ -742,11 +990,11 @@ async def fetch_page(
             print(
                 f"[{album_id}/{END_ID}] "
                 f"获取页面失败 "
-                f"({attempt}/{RETRIES})：{e}",
+                f"({attempt}/{PAGE_RETRIES})：{e}",
                 flush=True
             )
 
-            if attempt < RETRIES:
+            if attempt < PAGE_RETRIES:
 
                 await asyncio.sleep(
                     1.5 * attempt
@@ -760,7 +1008,7 @@ async def fetch_page(
 
 
 # ============================================================
-# 下载一张图片
+# 下载单张图片
 # ============================================================
 
 async def download_image(
@@ -791,14 +1039,14 @@ async def download_image(
         return "skip"
 
     # ========================================================
-    # 图片并发
+    # 并发限制
     # ========================================================
 
     async with semaphore:
 
         for attempt in range(
             1,
-            RETRIES + 1
+            DOWNLOAD_RETRIES + 1
         ):
 
             temp_file = filepath.with_name(
@@ -822,7 +1070,7 @@ async def download_image(
                 }
 
                 # =================================================
-                # 下载
+                # 请求
                 # =================================================
 
                 async with session.get(
@@ -854,10 +1102,12 @@ async def download_image(
 
                                 break
 
-                            f.write(chunk)
+                            f.write(
+                                chunk
+                            )
 
                 # =================================================
-                # 检查文件
+                # 检查
                 # =================================================
 
                 if (
@@ -870,7 +1120,7 @@ async def download_image(
                     )
 
                 # =================================================
-                # 正式文件
+                # 原子替换
                 # =================================================
 
                 os.replace(
@@ -898,7 +1148,7 @@ async def download_image(
 
                         pass
 
-                if attempt < RETRIES:
+                if attempt < DOWNLOAD_RETRIES:
 
                     await asyncio.sleep(
                         1.5 * attempt
@@ -917,10 +1167,13 @@ async def download_image(
 
 
 # ============================================================
-# 下载一个文件夹
+# 下载整个文件夹
 #
-# 文件夹之间绝对不并发
-# 一个文件夹里面图片并发
+# 文件夹之间：
+#   严格串行
+#
+# 文件夹内部：
+#   图片并发
 # ============================================================
 
 async def download_folder(
@@ -940,7 +1193,9 @@ async def download_folder(
         exist_ok=True
     )
 
-    total = len(images)
+    total = len(
+        images
+    )
 
     print()
     print(
@@ -949,7 +1204,7 @@ async def download_folder(
 
     print(
         f"[{album_id}/{END_ID}] "
-        f"开始处理文件夹"
+        f"开始下载文件夹"
     )
 
     print(
@@ -967,10 +1222,6 @@ async def download_folder(
     print(
         "=" * 70
     )
-
-    # ========================================================
-    # 图片并发
-    # ========================================================
 
     semaphore = asyncio.Semaphore(
         IMAGE_CONCURRENCY
@@ -1000,10 +1251,6 @@ async def download_folder(
             )
         )
 
-    # ========================================================
-    # 等待这个文件夹所有图片完成
-    # ========================================================
-
     results = await asyncio.gather(
         *tasks
     )
@@ -1020,8 +1267,26 @@ async def download_folder(
         "failed"
     )
 
+    print()
+    print(
+        f"[{album_id}/{END_ID}] "
+        f"下载统计："
+    )
+
+    print(
+        f"成功：{success}"
+    )
+
+    print(
+        f"已存在：{skipped}"
+    )
+
+    print(
+        f"失败：{failed}"
+    )
+
     # ========================================================
-    # 全部成功
+    # 所有图片成功
     # ========================================================
 
     if failed == 0:
@@ -1041,10 +1306,22 @@ async def download_folder(
 
                 f.write(
                     f"album_id={album_id}\n"
+                )
+
+                f.write(
                     f"folder={folder_name}\n"
+                )
+
+                f.write(
                     f"images={total}\n"
+                )
+
+                f.write(
                     f"success={success}\n"
-                    f"skip={skipped}\n"
+                )
+
+                f.write(
+                    f"skipped={skipped}\n"
                 )
 
         except Exception as e:
@@ -1054,46 +1331,22 @@ async def download_folder(
                 flush=True
             )
 
-        print()
         print(
             f"[{album_id}/{END_ID}] "
-            f"✓ 文件夹处理完成"
-        )
-
-        print(
-            f"成功：{success}"
-        )
-
-        print(
-            f"跳过：{skipped}"
-        )
-
-        print(
-            f"失败：{failed}"
+            f"✓ 文件夹下载完成",
+            flush=True
         )
 
         return True
 
     # ========================================================
-    # 有失败
+    # 有图片失败
     # ========================================================
 
-    print()
     print(
         f"[{album_id}/{END_ID}] "
-        f"✗ 文件夹没有完成"
-    )
-
-    print(
-        f"成功：{success}"
-    )
-
-    print(
-        f"跳过：{skipped}"
-    )
-
-    print(
-        f"失败：{failed}"
+        f"✗ 文件夹下载失败",
+        flush=True
     )
 
     return False
@@ -1106,7 +1359,7 @@ async def download_folder(
 async def main():
 
     # ========================================================
-    # 创建根目录
+    # 创建目录
     # ========================================================
 
     ROOT_DIR.mkdir(
@@ -1115,8 +1368,10 @@ async def main():
     )
 
     # ========================================================
-    # Git 配置
+    # 基本信息
     # ========================================================
+
+    branch = get_git_branch()
 
     print()
     print(
@@ -1124,11 +1379,7 @@ async def main():
     )
 
     print(
-        "XAsiaT GitHub Actions 下载器"
-    )
-
-    print(
-        "版本：逐文件夹下载 + 逐文件夹 Commit + Push"
+        "XAsiaT GitHub Actions Downloader"
     )
 
     print(
@@ -1136,15 +1387,11 @@ async def main():
     )
 
     print(
-        f"ID：{START_ID} ~ {END_ID}"
+        f"ID 范围：{START_ID} ~ {END_ID}"
     )
 
     print(
-        f"根目录：{ROOT_DIR}"
-    )
-
-    print(
-        "文件夹并发：1"
+        f"下载目录：{ROOT_DIR}"
     )
 
     print(
@@ -1152,11 +1399,7 @@ async def main():
     )
 
     print(
-        f"页面重试：{RETRIES}"
-    )
-
-    print(
-        f"Git Push 重试：{GIT_PUSH_RETRIES}"
+        f"Git 分支：{branch}"
     )
 
     print(
@@ -1164,18 +1407,18 @@ async def main():
     )
 
     # ========================================================
-    # 读取下载记忆
+    # 读取已完成 ID
     # ========================================================
 
     downloaded = load_downloaded()
 
     print(
-        f"已经完成的 ID："
+        f"已完成 ID 数量："
         f"{len(downloaded)}"
     )
 
     # ========================================================
-    # HTTP 连接池
+    # HTTP 连接器
     # ========================================================
 
     connector = aiohttp.TCPConnector(
@@ -1196,7 +1439,7 @@ async def main():
     ) as session:
 
         # ====================================================
-        # 文件夹严格顺序
+        # ID 严格顺序
         # ====================================================
 
         for album_id in range(
@@ -1204,15 +1447,30 @@ async def main():
             END_ID + 1
         ):
 
+            print()
+            print(
+                "#" * 80
+            )
+
+            print(
+                f"处理 ID："
+                f"{album_id}/{END_ID}"
+            )
+
+            print(
+                "#" * 80
+            )
+
             # =================================================
-            # 已下载
+            # 已完成
             # =================================================
 
             if album_id in downloaded:
 
                 print(
                     f"[{album_id}/{END_ID}] "
-                    f"✓ 已下载 → 跳过",
+                    f"✓ downloaded.txt 已记录"
+                    f" → 跳过",
                     flush=True
                 )
 
@@ -1227,13 +1485,21 @@ async def main():
                 album_id
             )
 
-            status = result["status"]
+            status = result[
+                "status"
+            ]
 
             # =================================================
             # 404
             # =================================================
 
             if status == "404":
+
+                print(
+                    f"[{album_id}/{END_ID}] "
+                    f"页面不存在，跳过",
+                    flush=True
+                )
 
                 continue
 
@@ -1243,22 +1509,36 @@ async def main():
 
             if status == "error":
 
+                raise RuntimeError(
+                    f"Album {album_id} "
+                    f"页面获取失败"
+                )
+
+            # =================================================
+            # 没有 H1
+            # =================================================
+
+            if status == "no_h1":
+
                 print(
                     f"[{album_id}/{END_ID}] "
-                    f"✗ 页面获取失败，进入下一个",
+                    f"页面没有 H1，跳过",
                     flush=True
                 )
 
                 continue
 
             # =================================================
-            # 空页面
+            # 没有图片
             # =================================================
 
-            if status in (
-                "no_h1",
-                "empty"
-            ):
+            if status == "empty":
+
+                print(
+                    f"[{album_id}/{END_ID}] "
+                    f"没有图片，跳过",
+                    flush=True
+                )
 
                 continue
 
@@ -1274,87 +1554,10 @@ async def main():
             )
 
             # =================================================
-            # 下载成功
+            # 下载失败
             # =================================================
 
-            if completed:
-
-                # -------------------------------------------------
-                # 写入记忆
-                # -------------------------------------------------
-
-                append_downloaded(
-                    album_id,
-                    result["folder"]
-                )
-
-                downloaded.add(
-                    album_id
-                )
-
-                print()
-                print(
-                    f"[{album_id}/{END_ID}] "
-                    f"✓ 已写入 downloaded.txt",
-                    flush=True
-                )
-
-                # =================================================
-                # 关键：
-                #
-                # 当前文件夹完成后立即 Commit + Push
-                #
-                # 不再等 1~20 全部完成
-                # =================================================
-
-                git_success = (
-                    commit_and_push_folder(
-                        album_id,
-                        result["folder"]
-                    )
-                )
-
-                # =================================================
-                # Git Push 失败
-                #
-                # 直接停止。
-                #
-                # 这样不会继续下载一堆文件，
-                # 导致下一次 Push 更大。
-                # =================================================
-
-                if not git_success:
-
-                    print()
-                    print(
-                        "=" * 80
-                    )
-
-                    print(
-                        f"[{album_id}/{END_ID}] "
-                        f"✗ GitHub Push 失败"
-                    )
-
-                    print(
-                        "为了避免产生大量未提交文件，"
-                        "程序停止。"
-                    )
-
-                    print(
-                        "下一次运行会自动检查已经存在的文件。"
-                    )
-
-                    print(
-                        "=" * 80
-                    )
-
-                    raise RuntimeError(
-                        "GitHub Push 失败"
-                    )
-
-                # =================================================
-                # 当前文件夹 Push 成功
-                # =================================================
+            if not completed:
 
                 print()
                 print(
@@ -1363,42 +1566,126 @@ async def main():
 
                 print(
                     f"[{album_id}/{END_ID}] "
-                    f"✓ 完成"
+                    f"✗ 当前文件夹失败"
                 )
 
                 print(
-                    "GitHub 已保存当前文件夹"
+                    "不会写入 downloaded.txt"
                 )
 
                 print(
-                    "继续下一个 ID..."
+                    "程序停止，下一次运行会继续当前 ID"
                 )
 
                 print(
                     "=" * 80
-                )
-
-            else:
-
-                print(
-                    f"[{album_id}/{END_ID}] "
-                    f"⚠ 本文件夹存在失败图片"
-                    f"，不会写入完成记录",
-                    flush=True
-                )
-
-                # 不继续下一个
-                # 让下一次 Actions 重新尝试当前 ID
-
-                print(
-                    f"[{album_id}/{END_ID}] "
-                    f"当前文件夹失败，程序停止。",
-                    flush=True
                 )
 
                 raise RuntimeError(
-                    f"Album {album_id} 下载失败"
+                    f"Album {album_id} "
+                    f"download failed"
                 )
+
+            # =================================================
+            # 下载成功
+            # =================================================
+
+            append_downloaded(
+                album_id,
+                result["folder"]
+            )
+
+            downloaded.add(
+                album_id
+            )
+
+            print(
+                f"[{album_id}/{END_ID}] "
+                f"✓ 写入 downloaded.txt",
+                flush=True
+            )
+
+            # =================================================
+            # 立即 Commit + Push
+            # =================================================
+
+            git_success = (
+                commit_and_push_folder(
+                    album_id,
+                    result["folder"]
+                )
+            )
+
+            # =================================================
+            # Push 失败
+            # =================================================
+
+            if not git_success:
+
+                print()
+                print(
+                    "=" * 80
+                )
+
+                print(
+                    f"[{album_id}/{END_ID}] "
+                    f"✗ GitHub Push 失败"
+                )
+
+                print(
+                    "为了防止继续产生大量未提交文件，"
+                    "程序停止。"
+                )
+
+                print(
+                    "下一次运行会自动跳过已经下载的图片。"
+                )
+
+                print(
+                    "=" * 80
+                )
+
+                raise RuntimeError(
+                    "GitHub Push 失败"
+                )
+
+            # =================================================
+            # 当前 ID 完成
+            # =================================================
+
+            print()
+            print(
+                "=" * 80
+            )
+
+            print(
+                f"[{album_id}/{END_ID}] "
+                f"✓ 全部完成"
+            )
+
+            print(
+                "✓ 图片下载完成"
+            )
+
+            print(
+                "✓ .complete 已生成"
+            )
+
+            print(
+                "✓ downloaded.txt 已更新"
+            )
+
+            print(
+                "✓ Git commit 已完成"
+            )
+
+            print(
+                "✓ Git push 已完成"
+            )
+
+            print(
+                "=" * 80
+            )
 
     # ========================================================
     # 全部完成
@@ -1410,7 +1697,7 @@ async def main():
     )
 
     print(
-        "全部扫描完成"
+        "🎉 全部任务完成"
     )
 
     print(
@@ -1418,11 +1705,7 @@ async def main():
     )
 
     print(
-        f"完成数量：{len(downloaded)}"
-    )
-
-    print(
-        f"目录：{ROOT_DIR}"
+        f"已完成数量：{len(downloaded)}"
     )
 
     print(
@@ -1431,7 +1714,7 @@ async def main():
 
 
 # ============================================================
-# Windows / GitHub Actions
+# 程序入口
 # ============================================================
 
 if __name__ == "__main__":
@@ -1450,16 +1733,14 @@ if __name__ == "__main__":
         )
 
         print(
-            "程序被用户中断"
-        )
-
-        print(
-            "已经完成并 Push 的文件夹不会重复下载。"
+            "程序被中断"
         )
 
         print(
             "=" * 80
         )
+
+        raise
 
     except Exception as e:
 
