@@ -24,18 +24,17 @@ permissions:
 jobs:
   download:
     runs-on: ubuntu-latest
-
     timeout-minutes: 360
 
     steps:
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -48,7 +47,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           git config http.version HTTP/1.1
           git config http.postBuffer 524288000
           git config core.compression 0
@@ -60,4 +58,13 @@ jobs:
           IMAGE_CONCURRENCY: ${{ github.event.inputs.image_concurrency }}
           ROOT_DIR: downloads
         run: |
+          echo "=========================================="
+          echo "开始运行"
+          echo "START_ID=${START_ID}"
+          echo "END_ID=${END_ID}"
+          echo "IMAGE_CONCURRENCY=${IMAGE_CONCURRENCY}"
+          echo "=========================================="
+
+          python --version
+
           python downloader.py
