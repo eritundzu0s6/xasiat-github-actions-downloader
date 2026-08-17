@@ -1,0 +1,62 @@
+name: Download albums and commit to repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_id:
+        description: "开始 ID"
+        required: true
+        default: "1"
+      end_id:
+        description: "结束 ID"
+        required: true
+        default: "20"
+      image_concurrency:
+        description: "单文件夹图片并发"
+        required: true
+        default: "10"
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download albums
+        env:
+          START_ID: ${{ github.event.inputs.start_id }}
+          END_ID: ${{ github.event.inputs.end_id }}
+          IMAGE_CONCURRENCY: ${{ github.event.inputs.image_concurrency }}
+          ROOT_DIR: downloads
+        run: python downloader.py
+
+      - name: Commit downloaded files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add downloads/
+
+          if git diff --cached --quiet; then
+            echo "没有新的文件需要提交"
+            exit 0
+          fi
+
+          git commit -m "Download albums ${{ github.event.inputs.start_id }}-${{ github.event.inputs.end_id }}"
+          git push
