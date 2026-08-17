@@ -29,49 +29,20 @@ jobs:
 
     steps:
 
-      # ==========================================================
-      # Checkout
-      # ==========================================================
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      # ==========================================================
-      # Python
-      # ==========================================================
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      # ==========================================================
-      # Python dependencies
-      # ==========================================================
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      # ==========================================================
-      # 下载
-      # ==========================================================
-
-      - name: Download albums
-        env:
-          START_ID: ${{ github.event.inputs.start_id }}
-          END_ID: ${{ github.event.inputs.end_id }}
-          IMAGE_CONCURRENCY: ${{ github.event.inputs.image_concurrency }}
-          ROOT_DIR: downloads
-        run: |
-          python downloader.py
-
-      # ==========================================================
-      # Git 配置
-      # ==========================================================
 
       - name: Configure Git
         run: |
@@ -82,83 +53,11 @@ jobs:
           git config http.postBuffer 524288000
           git config core.compression 0
 
-      # ==========================================================
-      # 检查文件
-      # ==========================================================
-
-      - name: Show downloaded files
+      - name: Download albums
+        env:
+          START_ID: ${{ github.event.inputs.start_id }}
+          END_ID: ${{ github.event.inputs.end_id }}
+          IMAGE_CONCURRENCY: ${{ github.event.inputs.image_concurrency }}
+          ROOT_DIR: downloads
         run: |
-          echo "========================================"
-          echo "下载目录"
-          echo "========================================"
-
-          du -sh downloads || true
-
-          echo ""
-          echo "文件数量："
-
-          find downloads -type f | wc -l
-
-          echo ""
-          echo "Git 状态："
-
-          git status --short
-
-      # ==========================================================
-      # 提交
-      # ==========================================================
-
-      - name: Commit downloaded files
-        run: |
-
-          git add downloads/
-
-          if git diff --cached --quiet; then
-            echo "没有新的文件需要提交"
-            exit 0
-          fi
-
-          git commit -m "Download albums ${{ github.event.inputs.start_id }}-${{ github.event.inputs.end_id }}"
-
-      # ==========================================================
-      # Push
-      # ==========================================================
-
-      - name: Push with retry
-        run: |
-
-          echo "开始 Push..."
-
-          for i in 1 2 3 4 5
-          do
-
-            echo "========================================"
-            echo "Push attempt $i / 5"
-            echo "========================================"
-
-            if git push origin HEAD:${GITHUB_REF_NAME}; then
-
-              echo "Push 成功"
-              exit 0
-
-            fi
-
-            echo "Push 失败"
-
-            if [ "$i" -lt 5 ]; then
-
-              echo "等待 20 秒后重试..."
-
-              sleep 20
-
-              git fetch origin
-
-              git rebase origin/${GITHUB_REF_NAME}
-
-            fi
-
-          done
-
-          echo "Push 连续失败 5 次"
-          exit 1
-```
+          python downloader.py
